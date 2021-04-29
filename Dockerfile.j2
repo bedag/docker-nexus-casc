@@ -1,0 +1,28 @@
+#
+# Copyright © 2021 Bedag Informatik AG
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Build CASC Plugin (Must be JDK 8 otherwise package won't complete)
+## Reference: https://github.com/AdaptiveConsulting/nexus-casc-plugin
+FROM maven:3-openjdk-8 AS casc
+RUN git clone {{ casc.repository.ref }} -b {% if build.casc_revision is defined %}{{ build.casc_revision }}{%- else %}{{ casc.repository.revision }}{%- endif %} casc/
+WORKDIR /casc/
+ENV MAVEN_OPTS "{% if (maven.proxy.host is defined and maven.proxy.port is defined) %}-Dhttp.proxyHost={{ maven.proxy.host }}-Dhttp.proxyPort={{ maven.proxy.port }} -Dhttps.proxyHost={{ maven.proxy.host }} -Dhttps.proxyPort={{ maven.proxy.port }}{%- endif %} {% if maven.opts is defined %}{{ maven.opts }}{%- endif %}"
+RUN mvn package
+
+# Add Plugin to Nexus
+FROM {% if build.nexus_image_repository is defined %}{{ build.nexus_image_repository }}{%- else %}{{ nexus.image.repository }}{%- endif %}{% if build.nexus_image_tag is defined %}:{{ build.nexus_image_tag }}{%- endif %}
+ENV NEXUS_CASC_CONFIG {{ nexus.config_path }}
+COPY ./{% if build.nexus_default_config is defined %}{{ build.nexus_default_config }}{%- else %}{{ nexus.default_config }}{%- endif %} {{ nexus.config_path }}
+COPY --from=casc /casc/target/nexus-casc-plugin-*-bundle.kar /opt/sonatype/nexus/deploy/
